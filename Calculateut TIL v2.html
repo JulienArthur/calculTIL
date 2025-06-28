@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculateur d'Intérêts de Retard - France</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        .lucide { 
+            width: 1em; 
+            height: 1em; 
+            stroke: currentColor; 
+            fill: none; 
+            stroke-width: 2; 
+            stroke-linecap: round; 
+            stroke-linejoin: round;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Icônes simplifiées
+        const Calculator = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <rect width="16" height="20" x="4" y="2" rx="2"/>
+                <line x1="8" x2="16" y1="6" y2="6"/>
+            </svg>
+        );
+
+        const Calendar = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <path d="M8 2v4"/>
+                <path d="M16 2v4"/>
+                <rect width="18" height="18" x="3" y="4" rx="2"/>
+                <path d="M3 10h18"/>
+            </svg>
+        );
+
+        const Plus = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <path d="M5 12h14"/>
+                <path d="M12 5v14"/>
+            </svg>
+        );
+
+        const Trash2 = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <path d="M3 6h18"/>
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                <line x1="10" x2="10" y1="11" y2="17"/>
+                <line x1="14" x2="14" y1="11" y2="17"/>
+            </svg>
+        );
+
+        const Euro = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <path d="M4 10h12"/>
+                <path d="M4 14h9"/>
+                <path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12a7.9 7.9 0 0 0 7.8 8 7.7 7.7 0 0 0 5.2-2"/>
+            </svg>
+        );
+
+        const Info = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 16v-4"/>
+                <path d="M12 8h.01"/>
+            </svg>
+        );
+
+        // Application principale
+        const DebtInterestCalculator = () => {
+            const [debtAmount, setDebtAmount] = useState('');
+            const [exigibilityDate, setExigibilityDate] = useState('');
+            const [creditorType, setCreditorType] = useState('particulier');
+            const [additionalDates, setAdditionalDates] = useState([]);
+            const [capitalization, setCapitalization] = useState(true);
+            const [isJudgment, setIsJudgment] = useState(false);
+            const [judgmentDate, setJudgmentDate] = useState('');
+            const [results, setResults] = useState(null);
+            const chartRef = React.useRef(null);
+            const chartInstance = React.useRef(null);
+
+            // Taux d'intérêt légaux (corrigés et complets)
+            const legalRates = {
+                // 2025
+                '2025-S1': { particulier: 7.21, professionnel: 3.71 },
+                '2025-S2': { particulier: 7.21, professionnel: 3.71 }, // À mettre à jour quand disponible
+                
+                // 2024
+                '2024-S2': { particulier: 8.16, professionnel: 4.92 },
+                '2024-S1': { particulier: 8.01, professionnel: 4.92 },
+                
+                // 2023  
+                '2023-S2': { particulier: 6.82, professionnel: 4.47 },
+                '2023-S1': { particulier: 3.15, professionnel: 3.15 },
+                
+                // 2022
+                '2022-S2': { particulier: 3.15, professionnel: 3.15 },
+                '2022-S1': { particulier: 3.13, professionnel: 3.13 },
+                
+                // 2021
+                '2021-S2': { particulier: 3.12, professionnel: 3.12 },
+                '2021-S1': { particulier: 3.14, professionnel: 3.14 },
+                
+                // 2020
+                '2020-S2': { particulier: 3.11, professionnel: 3.11 },
+                '2020-S1': { particulier: 3.15, professionnel: 3.15 },
+                
+                // 2019
+                '2019-S2': { particulier: 3.26, professionnel: 3.26 },
+                '2019-S1': { particulier: 3.40, professionnel: 3.40 },
+                
+                // 2018
+                '2018-S2': { particulier: 3.60, professionnel: 3.60 },
+                '2018-S1': { particulier: 3.73, professionnel: 3.73 },
+                
+                // 2017
+                '2017-S2': { particulier: 3.94, professionnel: 3.94 },
+                '2017-S1': { particulier: 4.16, professionnel: 4.16 },
+                
+                // 2016
+                '2016-S2': { particulier: 4.35, professionnel: 4.35 },
+                '2016-S1': { particulier: 4.54, professionnel: 4.54 },
+                
+                // 2015 (première année de distinction semestrielle)
+                '2015-S2': { particulier: 4.29, professionnel: 4.29 },
+                '2015-S1': { particulier: 4.29, professionnel: 4.29 },
+                
+                // Années antérieures (taux annuel unique)
+                '2014': { particulier: 0.04, professionnel: 0.04 },
+                '2013': { particulier: 0.04, professionnel: 0.04 },
+                '2012': { particulier: 0.71, professionnel: 0.71 },
+                '2011': { particulier: 0.38, professionnel: 0.38 },
+                '2010': { particulier: 0.65, professionnel: 0.65 }
+            };
+
+            const exportReport = () => {
+                if (!results) return;
+
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('p', 'mm', 'a4');
+                
+                const currentDate = new Date().toLocaleDateString('fr-FR');
+                const currentTime = new Date().toLocaleTimeString('fr-FR');
+                
+                // Configuration des polices et couleurs
+                const primaryColor = [37, 99, 235]; // Bleu
+                const secondaryColor = [75, 85, 99]; // Gris foncé
+                const lineHeight = 6;
+                let yPosition = 20;
+
+                // En-tête du document
+                doc.setFontSize(18);
+                doc.setTextColor(...primaryColor);
+                doc.setFont(undefined, 'bold');
+                doc.text('RAPPORT DE CALCUL D\'INTÉRÊTS DE RETARD', 105, yPosition, { align: 'center' });
+                
+                yPosition += 8;
+                doc.setFontSize(12);
+                doc.setTextColor(...secondaryColor);
+                doc.setFont(undefined, 'normal');
+                doc.text('Selon le taux d\'intérêt légal français', 105, yPosition, { align: 'center' });
+                
+                yPosition += 6;
+                doc.setFontSize(10);
+                doc.text(`Document généré le ${currentDate} à ${currentTime}`, 105, yPosition, { align: 'center' });
+                
+                // Ligne de séparation
+                yPosition += 8;
+                doc.setDrawColor(...primaryColor);
+                doc.setLineWidth(0.5);
+                doc.line(20, yPosition, 190, yPosition);
+                
+                yPosition += 10;
+
+                // Section 1: Informations générales
+                doc.setFontSize(14);
+                doc.setTextColor(...primaryColor);
+                doc.setFont(undefined, 'bold');
+                doc.text('1. INFORMATIONS GÉNÉRALES DE LA CRÉANCE', 20, yPosition);
+                
+                yPosition += 8;
+                doc.setFontSize(10);
+                doc.setTextColor(...secondaryColor);
+                doc.setFont(undefined, 'normal');
+                
+                const infos = [
+                    `Montant initial de la dette : ${results.principal.toFixed(2)} €`,
+                    `Date d'exigibilité : ${exigibilityDate}`,
+                    `Date de calcul : ${currentDate}`,
+                    `Type de créancier : ${creditorType === 'particulier' ? 'Particulier (personne physique)' : 'Professionnel'}`,
+                    `Capitalisation : ${capitalization ? 'Activée' : 'Désactivée'}`
+                ];
+                
+                infos.forEach(info => {
+                    doc.text(info, 25, yPosition);
+                    yPosition += lineHeight;
+                });
+
+                yPosition += 5;
+
+                // Encadré du total
+                doc.setFillColor(219, 234, 254); // Bleu clair
+                doc.setDrawColor(...primaryColor);
+                doc.setLineWidth(1);
+                doc.rect(20, yPosition, 170, 25, 'FD');
+                
+                doc.setFontSize(14);
+                doc.setTextColor(...primaryColor);
+                doc.setFont(undefined, 'bold');
+                doc.text('MONTANT TOTAL À RÉGLER', 105, yPosition + 8, { align: 'center' });
+                
+                doc.setFontSize(20);
+                doc.text(`${results.totalAmount.toFixed(2)} €`, 105, yPosition + 16, { align: 'center' });
+                
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'normal');
+                doc.text(`Dont ${results.totalInterests.toFixed(2)} € d'intérêts de retard${!capitalization ? ' (intérêts simples)' : ' (avec capitalisation)'}`, 105, yPosition + 22, { align: 'center' });
+                
+                yPosition += 35;
+
+                // Section 2: Résumé financier
+                doc.setFontSize(12);
+                doc.setTextColor(...primaryColor);
+                doc.setFont(undefined, 'bold');
+                doc.text('2. RÉSUMÉ FINANCIER', 20, yPosition);
+                
+                yPosition += 8;
+                doc.setFontSize(10);
+                doc.setTextColor(...secondaryColor);
+                doc.setFont(undefined, 'normal');
+                
+                const resume = [
+                    `Dette initiale : ${results.principal.toFixed(2)} €`,
+                ];
+                
+                if (results.totalAddedAmounts > 0) {
+                    resume.push(`Montants ajoutés : +${results.totalAddedAmounts.toFixed(2)} €`);
+                }
+                
+                resume.push(`Intérêts de retard : ${results.totalInterests.toFixed(2)} €`);
+                resume.push(`TOTAL DÛ : ${results.totalAmount.toFixed(2)} €`);
+                
+                resume.forEach((line, index) => {
+                    if (index === resume.length - 1) {
+                        doc.setFont(undefined, 'bold');
+                        doc.setTextColor(...primaryColor);
+                    }
+                    doc.text(line, 25, yPosition);
+                    yPosition += lineHeight;
+                });
+
+                // Nouvelle page si nécessaire
+                if (yPosition > 250) {
+                    doc.addPage();
+                    yPosition = 20;
+                }
+
+                yPosition += 10;
+
+                // Section 3: Détail des calculs
+                doc.setFontSize(12);
+                doc.setTextColor(...primaryColor);
+                doc.setFont(undefined, 'bold');
+                doc.text('3. DÉTAIL DES CALCULS D\'INTÉRÊTS', 20, yPosition);
+                
+                yPosition += 8;
+
+                // En-têtes du tableau
+                doc.setFontSize(8);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(...secondaryColor);
+                
+                const headers = ['Période', 'Semestre', 'Capital (€)', 'Taux (%)', 'Jours', 'Intérêts (€)'];
+                const colWidths = [40, 25, 25, 15, 15, 25];
+                let xPos = 20;
+                
+                headers.forEach((header, i) => {
+                    doc.text(header, xPos, yPosition);
+                    xPos += colWidths[i];
+                });
+                
+                yPosition += 2;
+                doc.setLineWidth(0.3);
+                doc.line(20, yPosition, 165, yPosition);
+                yPosition += 4;
+                
+                // Données du tableau
+                doc.setFont(undefined, 'normal');
+                results.interestDetails.forEach((detail, index) => {
+                    if (yPosition > 270) {
+                        doc.addPage();
+                        yPosition = 20;
+                    }
+                    
+                    xPos = 20;
+                    const values = [
+                        detail.period,
+                        detail.semester,
+                        detail.amount.toFixed(2),
+                        detail.rate.toString(),
+                        detail.days.toString(),
+                        detail.interest.toFixed(2)
+                    ];
+                    
+                    values.forEach((value, i) => {
+                        if (i === 0) {
+                            doc.text(value, xPos, yPosition);
+                        } else {
+                            doc.text(value, xPos + colWidths[i] - 2, yPosition, { align: 'right' });
+                        }
+                        xPos += colWidths[i];
+                    });
+                    
+                    yPosition += 4;
+                });
+                
+                // Total des intérêts
+                yPosition += 2;
+                doc.setLineWidth(0.3);
+                doc.line(20, yPosition, 165, yPosition);
+                yPosition += 4;
+                
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(...primaryColor);
+                doc.text('TOTAL DES INTÉRÊTS :', 140, yPosition, { align: 'right' });
+                doc.text(`${results.totalInterests.toFixed(2)} €`, 163, yPosition, { align: 'right' });
+
+                // Nouvelle page pour les références légales
+                doc.addPage();
+                yPosition = 20;
+
+                // Section 4: Références légales
+                doc.setFontSize(14);
+                doc.setTextColor(...primaryColor);
+                doc.setFont(undefined, 'bold');
+                doc.text('4. RÉFÉRENCES LÉGALES ET MÉTHODOLOGIE', 20, yPosition);
+                
+                yPosition += 10;
+                doc.setFontSize(11);
+                doc.text('Base légale :', 20, yPosition);
+                
+                yPosition += 6;
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(...secondaryColor);
+                
+                const baseLegale = [
+                    '• Articles L. 313-2 et suivants du Code monétaire et financier',
+                    '• Loi n° 75-619 du 11 juillet 1975, article 3 (majoration)',
+                    '• Ordonnance n° 2014-947 du 20 août 2014 (réforme du taux)',
+                    '• Décret n° 2014-1115 du 2 octobre 2014 (modalités de calcul)'
+                ];
+                
+                baseLegale.forEach(item => {
+                    doc.text(item, 25, yPosition);
+                    yPosition += 5;
+                });
+
+                yPosition += 5;
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(...primaryColor);
+                doc.text('Formule de calcul appliquée :', 20, yPosition);
+                
+                yPosition += 8;
+                doc.setFillColor(248, 250, 252);
+                doc.setDrawColor(203, 213, 225);
+                doc.rect(20, yPosition - 3, 170, 10, 'FD');
+                
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(...secondaryColor);
+                doc.text('Intérêts = (Capital × Taux d\'intérêt légal × Nombre de jours) ÷ (365 × 100)', 105, yPosition + 2, { align: 'center' });
+                
+                yPosition += 15;
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(...primaryColor);
+                doc.text('Principes appliqués :', 20, yPosition);
+                
+                yPosition += 6;
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(...secondaryColor);
+                
+                const principes = [
+                    '• Taux semestriels distincts depuis 2015, taux annuels avant',
+                    '• Distinction entre créanciers particuliers et professionnels',
+                    `• Capitalisation ${capitalization ? 'activée' : 'désactivée'} des intérêts`,
+                    '• Calcul sur base 365 jours conformément à la réglementation'
+                ];
+                
+                principes.forEach(principe => {
+                    doc.text(principe, 25, yPosition);
+                    yPosition += 5;
+                });
+
+                // Note importante
+                yPosition += 8;
+                doc.setFillColor(254, 243, 199);
+                doc.setDrawColor(245, 158, 11);
+                doc.setLineWidth(0.5);
+                doc.rect(20, yPosition, 170, 20, 'FD');
+                
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(146, 64, 14);
+                doc.text('IMPORTANT :', 25, yPosition + 6);
+                
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(92, 64, 14);
+                const noteText = 'Ce calcul est effectué selon la réglementation française en vigueur. En cas de condamnation judiciaire, le taux peut être majoré de 5 points après 2 mois.';
+                const splitText = doc.splitTextToSize(noteText, 160);
+                doc.text(splitText, 25, yPosition + 10);
+
+                // Footer
+                yPosition = 280;
+                doc.setFontSize(8);
+                doc.setTextColor(107, 114, 128);
+                doc.text('Document généré automatiquement • Calcul conforme à la réglementation française', 105, yPosition, { align: 'center' });
+                doc.text('Source des taux : Arrêtés ministériels du Ministère de l\'Économie', 105, yPosition + 4, { align: 'center' });
+
+                // Sauvegarder le PDF
+                const fileName = `rapport-interets-retard-${new Date().toISOString().split('T')[0]}.pdf`;
+                doc.save(fileName);
+            };
+
+            const exportToExcel = () => {
+                if (!results) return;
+
+                const wb = XLSX.utils.book_new();
+                
+                // Feuille 1: Résumé
+                const resumeData = [
+                    ['CALCULATEUR D\'INTÉRÊTS DE RETARD'],
+                    [''],
+                    ['Date de génération', new Date().toLocaleDateString('fr-FR')],
+                    [''],
+                    ['INFORMATIONS GÉNÉRALES'],
+                    ['Montant initial', results.principal.toFixed(2) + ' €'],
+                    ['Date d\'exigibilité', exigibilityDate],
+                    ['Type de créancier', creditorType === 'particulier' ? 'Particulier' : 'Professionnel'],
+                    ['Capitalisation', capitalization ? 'Activée' : 'Désactivée'],
+                    ['Condamnation judiciaire', isJudgment ? 'Oui' : 'Non'],
+                    ...(isJudgment && judgmentDate ? [['Date de jugement', judgmentDate]] : []),
+                    [''],
+                    ['RÉSUMÉ FINANCIER'],
+                    ['Dette initiale', results.principal.toFixed(2) + ' €'],
+                    ...(results.totalAddedAmounts > 0 ? [['Montants ajoutés', '+' + results.totalAddedAmounts.toFixed(2) + ' €']] : []),
+                    ['Intérêts de retard', results.totalInterests.toFixed(2) + ' €'],
+                    ['TOTAL DÛ', results.totalAmount.toFixed(2) + ' €']
+                ];
+                
+                const ws1 = XLSX.utils.aoa_to_sheet(resumeData);
+                XLSX.utils.book_append_sheet(wb, ws1, 'Résumé');
+                
+                // Feuille 2: Détail des calculs
+                const detailHeaders = ['Période', 'Semestre', 'Capital (€)', 'Taux (%)', 'Taux majoré', 'Jours', 'Intérêts (€)'];
+                const detailData = [
+                    detailHeaders,
+                    ...results.interestDetails.map(detail => [
+                        detail.period,
+                        detail.semester,
+                        detail.amount.toFixed(2),
+                        detail.baseRate || detail.rate,
+                        detail.isMajorated ? 'Oui (+5pts)' : 'Non',
+                        detail.days,
+                        detail.interest.toFixed(2)
+                    ]),
+                    ['', '', '', '', '', 'TOTAL', results.totalInterests.toFixed(2)]
+                ];
+                
+                const ws2 = XLSX.utils.aoa_to_sheet(detailData);
+                XLSX.utils.book_append_sheet(wb, ws2, 'Détail calculs');
+                
+                // Feuille 3: Événements de capital (si applicable)
+                if (results.capitalEvents && results.capitalEvents.length > 0) {
+                    const capitalHeaders = ['Date', 'Description', 'Montant ajouté (€)', 'Nouveau capital (€)'];
+                    const capitalData = [
+                        capitalHeaders,
+                        ...results.capitalEvents.map(event => [
+                            event.date,
+                            event.description,
+                            event.amount.toFixed(2),
+                            event.newCapital.toFixed(2)
+                        ])
+                    ];
+                    
+                    const ws3 = XLSX.utils.aoa_to_sheet(capitalData);
+                    XLSX.utils.book_append_sheet(wb, ws3, 'Événements capital');
+                }
+                
+                // Feuille 4: Capitalisation (si applicable)
+                if (capitalization && results.detailsBySemester.length > 0) {
+                    const capHeaders = ['Période', 'Intérêts capitalisés (€)', 'Nouveau capital (€)'];
+                    const capData = [
+                        capHeaders,
+                        ...results.detailsBySemester.map(detail => [
+                            detail.semester,
+                            detail.interestAdded.toFixed(2),
+                            detail.capitalizedAmount.toFixed(2)
+                        ])
+                    ];
+                    
+                    const ws4 = XLSX.utils.aoa_to_sheet(capData);
+                    XLSX.utils.book_append_sheet(wb, ws4, 'Capitalisation');
+                }
+                
+                // Sauvegarder le fichier Excel
+                const fileName = `calcul-interets-${new Date().toISOString().split('T')[0]}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+            };
+
+            const createChart = () => {
+                if (!results?.chartData || !chartRef.current) return;
+
+                // Détruire le graphique existant
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
+                }
+
+                const ctx = chartRef.current.getContext('2d');
+                
+                chartInstance.current = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: results.chartData.map(item => item.date),
+                        datasets: [
+                            {
+                                label: 'Capital + Ajouts',
+                                data: results.chartData.map(item => item.capital),
+                                backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                                borderColor: 'rgba(59, 130, 246, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Intérêts cumulés',
+                                data: results.chartData.map(item => item.cumulativeInterests),
+                                backgroundColor: 'rgba(245, 158, 11, 0.8)',
+                                borderColor: 'rgba(245, 158, 11, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                stacked: true,
+                                title: {
+                                    display: true,
+                                    text: 'Périodes'
+                                }
+                            },
+                            y: {
+                                stacked: true,
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Montant (€)'
+                                },
+                                ticks: {
+                                    callback: function(value) {
+                                        return value.toLocaleString('fr-FR') + ' €';
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Évolution du Capital et des Intérêts',
+                                font: {
+                                    size: 16
+                                }
+                            },
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    footer: function(tooltipItems) {
+                                        let total = 0;
+                                        tooltipItems.forEach(function(tooltipItem) {
+                                            total += tooltipItem.parsed.y;
+                                        });
+                                        return 'Total: ' + total.toLocaleString('fr-FR') + ' €';
+                                    }
+                                }
+                            }
+                        },
+                        interaction: {
+                            mode: 'nearest',
+                            axis: 'x',
+                            intersect: false
+                        }
+                    }
+                });
+            };
+
+            React.useEffect(() => {
+                if (results?.chartData) {
+                    setTimeout(createChart, 100); // Petite pause pour s'assurer que le DOM est prêt
+                }
+                
+                return () => {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                };
+            }, [results]);
+
+            const addDate = () => {
+                setAdditionalDates([...additionalDates, { date: '', description: '', amount: '' }]);
+            };
+
+            const updateDate = (index, field, value) => {
+                const updated = [...additionalDates];
+                updated[index][field] = value;
+                setAdditionalDates(updated);
+            };
+
+            const removeDate = (index) => {
+                setAdditionalDates(additionalDates.filter((_, i) => i !== index));
+            };
+
+            const getSemesterKey = (date) => {
+                const year = date.getFullYear();
+                const month = date.getMonth() + 1; // 1-12
+                
+                // Pour les années avant 2015, pas de distinction semestrielle
+                if (year < 2015) {
+                    return year.toString();
+                }
+                
+                // À partir de 2015 : S1 (jan-juin) ou S2 (juil-déc)
+                const semester = month <= 6 ? 'S1' : 'S2';
+                return `${year}-${semester}`;
+            };
+
+            // Fonction pour calculer les jours précisément
+            const calculateDaysBetween = (startDate, endDate) => {
+                const diffTime = endDate.getTime() - startDate.getTime();
+                return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+            };
+
+            // Fonction pour obtenir la fin de période (semestre ou année)
+            const getPeriodEnd = (date) => {
+                const year = date.getFullYear();
+                
+                if (year < 2015) {
+                    // Avant 2015 : fin d'année civile
+                    return new Date(year, 11, 31, 23, 59, 59); // 31 décembre
+                } else {
+                    // Depuis 2015 : fin de semestre
+                    const month = date.getMonth();
+                    if (month < 6) {
+                        // Premier semestre : fin le 30 juin
+                        return new Date(year, 5, 30, 23, 59, 59);
+                    } else {
+                        // Deuxième semestre : fin le 31 décembre
+                        return new Date(year, 11, 31, 23, 59, 59);
+                    }
+                }
+            };
+
+            const calculateInterests = () => {
+                if (!debtAmount || !exigibilityDate) return;
+
+                const principal = parseFloat(debtAmount);
+                const startDate = new Date(exigibilityDate);
+                const endDate = new Date();
+                
+                // Date de majoration (2 mois après jugement)
+                let majorationDate = null;
+                if (isJudgment && judgmentDate) {
+                    majorationDate = new Date(judgmentDate);
+                    majorationDate.setMonth(majorationDate.getMonth() + 2);
+                }
+                
+                // Construire la liste chronologique des événements
+                const allEvents = [{ 
+                    date: new Date(startDate), 
+                    amount: 0, 
+                    description: 'Date d\'exigibilité',
+                    type: 'start'
+                }];
+                
+                // Ajouter la date de majoration si applicable
+                if (majorationDate && majorationDate < endDate) {
+                    allEvents.push({
+                        date: new Date(majorationDate),
+                        amount: 0,
+                        description: 'Majoration +5 points (2 mois après jugement)',
+                        type: 'majoration'
+                    });
+                }
+                
+                // Ajouter les événements de capital
+                additionalDates.forEach(item => {
+                    if (item.date) {
+                        allEvents.push({
+                            date: new Date(item.date),
+                            amount: parseFloat(item.amount) || 0,
+                            description: item.description || 'Ajout de capital',
+                            type: 'capital'
+                        });
+                    }
+                });
+                
+                allEvents.push({ 
+                    date: new Date(endDate), 
+                    amount: 0, 
+                    description: 'Date de calcul',
+                    type: 'end'
+                });
+                
+                // Trier par date
+                allEvents.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+                let totalInterests = 0;
+                let totalAddedAmounts = 0;
+                const detailsBySemester = [];
+                const interestDetails = [];
+                const capitalEvents = [];
+                const chartData = [];
+
+                // Calculer les intérêts période par période
+                for (let i = 0; i < allEvents.length - 1; i++) {
+                    const periodStart = new Date(allEvents[i].date);
+                    const periodEnd = new Date(allEvents[i + 1].date);
+                    
+                    // Capital au début de la période
+                    let periodCapital = principal;
+                    
+                    // Ajouter tous les montants des événements précédents
+                    for (let j = 0; j <= i; j++) {
+                        if (allEvents[j].type === 'capital' && allEvents[j].amount > 0) {
+                            periodCapital += allEvents[j].amount;
+                            if (j === i) { // Événement de la période courante
+                                totalAddedAmounts += allEvents[j].amount;
+                                capitalEvents.push({
+                                    date: allEvents[j].date.toLocaleDateString('fr-FR'),
+                                    description: allEvents[j].description,
+                                    amount: allEvents[j].amount,
+                                    newCapital: periodCapital
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Ajouter les intérêts capitalisés précédents si activés
+                    if (capitalization) {
+                        for (const semester of detailsBySemester) {
+                            periodCapital = semester.capitalizedAmount;
+                        }
+                    }
+
+                    // Calculer les intérêts pour cette période
+                    let currentCalculationDate = new Date(periodStart);
+                    let remainingCapital = periodCapital;
+
+                    while (currentCalculationDate < periodEnd) {
+                        const semesterKey = getSemesterKey(currentCalculationDate);
+                        let baseRate = legalRates[semesterKey]?.[creditorType] || legalRates['2025-S1'][creditorType];
+                        
+                        // Appliquer la majoration si condamnation et après 2 mois
+                        let appliedRate = baseRate;
+                        if (majorationDate && currentCalculationDate >= majorationDate) {
+                            appliedRate = baseRate + 5; // Majoration de 5 points (art. L.313-3 CMF)
+                        }
+                        
+                        const periodEndLimit = getPeriodEnd(currentCalculationDate);
+                        const calculationEnd = periodEnd < periodEndLimit ? periodEnd : periodEndLimit;
+                        
+                        if (calculationEnd > currentCalculationDate) {
+                            const days = calculateDaysBetween(currentCalculationDate, calculationEnd);
+                            
+                            if (days > 0) {
+                                const interestAmount = (remainingCapital * appliedRate * days) / (365 * 100);
+                                totalInterests += interestAmount;
+                                
+                                const semesterLabel = currentCalculationDate.getFullYear() < 2015 
+                                    ? `${currentCalculationDate.getFullYear()}` 
+                                    : `${currentCalculationDate.getFullYear()}-${currentCalculationDate.getMonth() < 6 ? '1er' : '2ème'} semestre`;
+                                
+                                interestDetails.push({
+                                    period: `${currentCalculationDate.toLocaleDateString('fr-FR')} - ${calculationEnd.toLocaleDateString('fr-FR')}`,
+                                    semester: semesterLabel,
+                                    amount: remainingCapital,
+                                    rate: appliedRate,
+                                    baseRate: baseRate,
+                                    isMajorated: appliedRate !== baseRate,
+                                    days: days,
+                                    interest: interestAmount
+                                });
+
+                                // Données pour le graphique
+                                chartData.push({
+                                    date: calculationEnd.toLocaleDateString('fr-FR'),
+                                    capital: remainingCapital,
+                                    cumulativeInterests: totalInterests,
+                                    total: remainingCapital + totalInterests
+                                });
+
+                                // Capitalisation à la fin de semestre/année
+                                if (capitalization && 
+                                    calculationEnd.getTime() === periodEndLimit.getTime() && 
+                                    calculationEnd < periodEnd) {
+                                    
+                                    remainingCapital += interestAmount;
+                                    
+                                    detailsBySemester.push({
+                                        semester: semesterLabel,
+                                        capitalizedAmount: remainingCapital,
+                                        interestAdded: interestAmount
+                                    });
+                                }
+                            }
+                        }
+                        
+                        // Passer au semestre/année suivant
+                        currentCalculationDate = new Date(calculationEnd.getTime() + 24 * 60 * 60 * 1000);
+                    }
+                }
+
+                // Calcul du total final
+                let finalTotal;
+                if (capitalization && detailsBySemester.length > 0) {
+                    // Avec capitalisation : prendre le dernier capital capitalisé
+                    finalTotal = detailsBySemester[detailsBySemester.length - 1].capitalizedAmount;
+                } else {
+                    // Sans capitalisation : somme simple
+                    finalTotal = principal + totalAddedAmounts + totalInterests;
+                }
+
+                setResults({
+                    principal,
+                    totalInterests,
+                    totalAmount: finalTotal,
+                    detailsBySemester,
+                    interestDetails,
+                    capitalEvents,
+                    totalAddedAmounts,
+                    chartData
+                });
+            };
+
+            useEffect(() => {
+                if (debtAmount && exigibilityDate) {
+                    calculateInterests();
+                }
+            }, [debtAmount, exigibilityDate, creditorType, additionalDates, capitalization, isJudgment, judgmentDate]);
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
+                            {/* Header */}
+                            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white">
+                                <div className="flex items-center gap-3">
+                                    <Calculator className="w-8 h-8" />
+                                    <div>
+                                        <h1 className="text-2xl font-bold">Calculateur d'Intérêts de Retard</h1>
+                                        <p className="text-blue-100">Taux d'intérêt légal France - Capitalisation semestrielle</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Info Banner */}
+                            <div className="bg-amber-50 border-l-4 border-amber-400 p-4">
+                                <div className="flex items-start gap-3">
+                                    <Info className="w-5 h-5 text-amber-600 mt-0.5" />
+                                    <div className="text-sm text-amber-800">
+                                        <p className="font-semibold">Taux actuels (1er semestre 2025):</p>
+                                        <p>• Créancier particulier: 7,21%</p>
+                                        <p>• Créancier professionnel: 3,71%</p>
+                                        <p className="mt-1 text-xs">✅ Majoration +5 points si condamnation (Art. L.313-3 CMF)</p>
+                                        <p className="text-xs">✅ Visualisation graphique et exports PDF/Excel disponibles</p>
+                                        <p className="text-xs">Les intérêts se capitalisent à la fin de chaque semestre (depuis 2015) selon le paramétrage</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid lg:grid-cols-2 gap-6 p-6">
+                                {/* Formulaire */}
+                                <div className="space-y-6">
+                                    <div className="bg-gray-50 rounded-xl p-6">
+                                        <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                            <Euro className="w-5 h-5" />
+                                            Informations de la dette
+                                        </h2>
+                                        
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Montant de la dette (€)
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={debtAmount}
+                                                    onChange={(e) => setDebtAmount(e.target.value)}
+                                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                    placeholder="10000.00"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Date d'exigibilité
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    value={exigibilityDate}
+                                                    onChange={(e) => setExigibilityDate(e.target.value)}
+                                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Type de créancier
+                                                </label>
+                                                <select
+                                                    value={creditorType}
+                                                    onChange={(e) => setCreditorType(e.target.value)}
+                                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                >
+                                                    <option value="particulier">Particulier (personne physique)</option>
+                                                    <option value="professionnel">Professionnel</option>
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Capitalisation des intérêts
+                                                </label>
+                                                <div className="flex items-center gap-3">
+                                                    <button
+                                                        onClick={() => setCapitalization(!capitalization)}
+                                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                            capitalization ? 'bg-blue-600' : 'bg-gray-300'
+                                                        }`}
+                                                    >
+                                                        <span
+                                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                                capitalization ? 'translate-x-6' : 'translate-x-1'
+                                                            }`}
+                                                        />
+                                                    </button>
+                                                    <span className="text-sm text-gray-700">
+                                                        {capitalization ? 'Activée' : 'Désactivée'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    {capitalization 
+                                                        ? 'Les intérêts sont ajoutés au capital à chaque fin de période' 
+                                                        : 'Les intérêts sont calculés sur le capital initial uniquement'
+                                                    }
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Condamnation judiciaire (Art. L.313-3 CMF)
+                                                </label>
+                                                <div className="flex items-center gap-3 mb-2">
+                                                    <button
+                                                        onClick={() => setIsJudgment(!isJudgment)}
+                                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                            isJudgment ? 'bg-red-600' : 'bg-gray-300'
+                                                        }`}
+                                                    >
+                                                        <span
+                                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                                isJudgment ? 'translate-x-6' : 'translate-x-1'
+                                                            }`}
+                                                        />
+                                                    </button>
+                                                    <span className="text-sm text-gray-700">
+                                                        {isJudgment ? 'Jugement prononcé' : 'Pas de jugement'}
+                                                    </span>
+                                                </div>
+                                                {isJudgment && (
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                                                            Date du jugement
+                                                        </label>
+                                                        <input
+                                                            type="date"
+                                                            value={judgmentDate}
+                                                            onChange={(e) => setJudgmentDate(e.target.value)}
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+                                                        />
+                                                    </div>
+                                                )}
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Majoration de +5 points applicable 2 mois après le jugement
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Événements additionnels */}
+                                    <div className="bg-gray-50 rounded-xl p-6">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                                <Calendar className="w-5 h-5" />
+                                                Événements additionnels
+                                            </h3>
+                                            <button
+                                                onClick={addDate}
+                                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                            >
+                                                <Plus className="w-4 h-4" />
+                                                Ajouter
+                                            </button>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            {additionalDates.map((item, index) => (
+                                                <div key={index} className="grid grid-cols-12 gap-2">
+                                                    <input
+                                                        type="date"
+                                                        value={item.date}
+                                                        onChange={(e) => updateDate(index, 'date', e.target.value)}
+                                                        className="col-span-3 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={item.amount}
+                                                        onChange={(e) => updateDate(index, 'amount', e.target.value)}
+                                                        placeholder="Montant (€)"
+                                                        className="col-span-3 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        value={item.description}
+                                                        onChange={(e) => updateDate(index, 'description', e.target.value)}
+                                                        placeholder="Description"
+                                                        className="col-span-5 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                    />
+                                                    <button
+                                                        onClick={() => removeDate(index)}
+                                                        className="col-span-1 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {additionalDates.length === 0 && (
+                                                <div className="text-center text-gray-500 text-sm py-4">
+                                                    Ajoutez des événements comme des versements partiels, jugements, etc.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Résultats */}
+                                <div className="space-y-6">
+                                    {results && (
+                                        <>
+                                            {/* Résumé */}
+                                            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+                                                <div className="flex justify-between items-start mb-4">
+                                                    <h2 className="text-xl font-semibold text-gray-800">Résumé</h2>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={exportToExcel}
+                                                            className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                                                            title="Exporter vers Excel"
+                                                        >
+                                                            📊 Excel
+                                                        </button>
+                                                        <button
+                                                            onClick={exportReport}
+                                                            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                                                            title="Exporter le rapport complet en PDF"
+                                                        >
+                                                            📄 PDF
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-gray-700">Dette initiale:</span>
+                                                        <span className="font-semibold text-lg">{results.principal.toFixed(2)} €</span>
+                                                    </div>
+                                                    {results.totalAddedAmounts > 0 && (
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-gray-700">Montants ajoutés:</span>
+                                                            <span className="font-semibold text-lg text-blue-600">
+                                                                +{results.totalAddedAmounts.toFixed(2)} €
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-gray-700">Intérêts totaux:</span>
+                                                        <span className="font-semibold text-lg text-orange-600">{results.totalInterests.toFixed(2)} €</span>
+                                                    </div>
+                                                    <div className="border-t pt-3">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-gray-800 font-semibold">Total à payer:</span>
+                                                            <span className="font-bold text-2xl text-green-700">{results.totalAmount.toFixed(2)} €</span>
+                                                        </div>
+                                                        {!capitalization && (
+                                                            <div className="text-xs text-gray-600 mt-1">
+                                                                (Intérêts simples - sans capitalisation)
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Événements de capital */}
+                                            {results.capitalEvents && results.capitalEvents.length > 0 && (
+                                                <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+                                                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Événements de capital</h3>
+                                                    <div className="space-y-3">
+                                                        {results.capitalEvents.map((event, index) => (
+                                                            <div key={index} className="bg-white rounded-lg p-4 border border-purple-200">
+                                                                <div className="flex justify-between items-center">
+                                                                    <div>
+                                                                        <div className="font-medium text-gray-800">{event.date}</div>
+                                                                        <div className="text-sm text-gray-600">{event.description}</div>
+                                                                    </div>
+                                                                    <div className="text-right">
+                                                                        <div className="font-semibold text-purple-600">+{event.amount.toFixed(2)} €</div>
+                                                                        <div className="text-sm text-gray-600">
+                                                                            Nouveau capital: {event.newCapital.toFixed(2)} €
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Graphique d'évolution */}
+                                            {results.chartData && results.chartData.length > 0 && (
+                                                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                                                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Évolution graphique</h3>
+                                                    <div className="bg-white rounded-lg p-4 border" style={{ height: '400px' }}>
+                                                        <canvas ref={chartRef}></canvas>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 mt-2 text-center">
+                                                        Graphique utile pour visualiser l'évolution de la dette lors de médiations
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Détail des intérêts par période */}
+                                            <div className="bg-gray-50 rounded-xl p-6">
+                                                <h3 className="text-lg font-semibold text-gray-800 mb-4">Détail des intérêts par période</h3>
+                                                <div className="space-y-3 max-h-64 overflow-y-auto">
+                                                    {results.interestDetails.map((detail, index) => (
+                                                        <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <div>
+                                                                    <div className="text-sm font-medium text-gray-800">{detail.period}</div>
+                                                                    <div className="text-xs text-gray-600">{detail.semester}</div>
+                                                                </div>
+                                                                <div className="text-right">
+                                                                    <div className="font-semibold text-blue-600">{detail.interest.toFixed(2)} €</div>
+                                                                    <div className="text-xs text-gray-500">{detail.rate}% × {detail.days}j</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-xs text-gray-600">
+                                                                Capital: {detail.amount.toFixed(2)} €
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Capitalisation par semestre */}
+                                            {capitalization && results.detailsBySemester.length > 0 && (
+                                                <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+                                                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Capitalisation semestrielle</h3>
+                                                    <div className="space-y-3">
+                                                        {results.detailsBySemester.map((detail, index) => (
+                                                            <div key={index} className="bg-white rounded-lg p-4 border border-blue-200">
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="font-medium text-gray-800">{detail.semester}</span>
+                                                                    <div className="text-right">
+                                                                        <div className="text-sm text-gray-600">
+                                                                            Intérêts ajoutés: +{detail.interestAdded.toFixed(2)} €
+                                                                        </div>
+                                                                        <div className="font-semibold text-blue-600">
+                                                                            Nouveau capital: {detail.capitalizedAmount.toFixed(2)} €
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Références légales */}
+                                            <div className="bg-amber-50 rounded-xl p-6 border border-amber-200">
+                                                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                                    <Info className="w-5 h-5" />
+                                                    Références légales
+                                                </h3>
+                                                <div className="space-y-3 text-sm text-gray-700">
+                                                    <div>
+                                                        <p className="font-semibold text-gray-800">Base légale :</p>
+                                                        <ul className="list-disc list-inside space-y-1 ml-2">
+                                                            <li>Articles L. 313-2 et suivants du Code monétaire et financier</li>
+                                                            <li>Article L. 313-3 CMF - Majoration de 5 points en cas de condamnation</li>
+                                                            <li>Loi n° 75-619 du 11 juillet 1975, article 3</li>
+                                                            <li>Ordonnance n° 2014-947 du 20 août 2014</li>
+                                                        </ul>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-gray-800">Formule de calcul :</p>
+                                                        <p className="italic bg-white p-2 rounded border">
+                                                            Intérêts = (Capital × Taux × Nombre de jours) ÷ (365 × 100)
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-gray-800">Particularités :</p>
+                                                        <ul className="list-disc list-inside space-y-1 ml-2">
+                                                            <li>Capitalisation {capitalization ? 'activée' : 'désactivée'} par semestre depuis 2015</li>
+                                                            <li>Majoration de 5 points en cas de condamnation après 2 mois (Art. L.313-3 CMF)</li>
+                                                            <li>Taux distincts selon le type de créancier depuis 2015</li>
+                                                            {isJudgment && (
+                                                                <li className="text-red-600 font-semibold">
+                                                                    ⚖️ Condamnation judiciaire active - Majoration appliquée
+                                                                </li>
+                                                            )}
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {!results && (
+                                        <div className="bg-gray-50 rounded-xl p-8 text-center">
+                                            <Calculator className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                                            <p className="text-gray-600">Saisissez le montant de la dette et la date d'exigibilité pour commencer le calcul</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Rendu de l'application
+        ReactDOM.render(<DebtInterestCalculator />, document.getElementById('root'));
+    </script>
+</body>
+</html>
+                                                        <!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculateur d'Intérêts de Retard - France</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .lucide { 
+            width: 1em; 
+            height: 1em; 
+            stroke: currentColor; 
+            fill: none; 
+            stroke-width: 2; 
+            stroke-linecap: round; 
+            stroke-linejoin: round;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Icônes simplifiées
+        const Calculator = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <rect width="16" height="20" x="4" y="2" rx="2"/>
+                <line x1="8" x2="16" y1="6" y2="6"/>
+                <line x1="16" x2="16" y1="14" y2="18"/>
+                <path d="m16 10 4 4-4 4"/>
+            </svg>
+        );
+
+        const Calendar = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <path d="M8 2v4"/>
+                <path d="M16 2v4"/>
+                <rect width="18" height="18" x="3" y="4" rx="2"/>
+                <path d="M3 10h18"/>
+            </svg>
+        );
+
+        const Plus = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <path d="M5 12h14"/>
+                <path d="M12 5v14"/>
+            </svg>
+        );
+
+        const Trash2 = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <path d="M3 6h18"/>
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                <line x1="10" x2="10" y1="11" y2="17"/>
+                <line x1="14" x2="14" y1="11" y2="17"/>
+            </svg>
+        );
+
+        const Euro = () => (
+            <svg className="lucide" viewBox="0 0 24 24">
+                <path d="M4 10h12"/>
+                <path d="M4 14h9"/>
+                <path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12a7.9 7.9 0 0 0 7.8 8 
